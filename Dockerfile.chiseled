@@ -12,15 +12,15 @@ ARG TARGETARCH
 WORKDIR /nethermind
 
 COPY src/Nethermind src/Nethermind
-COPY Directory.*.props .
+COPY Directory.*.props Directory.Build.targets ./
 COPY global.json .
 COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-  rid="linux-${arch}" && \
   cd src/Nethermind/Nethermind.Runner && \
   dotnet restore --locked-mode && \
-  dotnet publish -c $BUILD_CONFIG -r $rid -o /publish --no-self-contained \
+  dotnet restore -r "linux-${arch}" -p:PublishReadyToRun=true && \
+  dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-restore --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH
 
 # Creating these directories here is needed to ensure the correct permissions
@@ -32,6 +32,10 @@ RUN cd /publish && \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.5-noble-chiseled@sha256:1191b4891ae8b1a8184b2de52b2c6332dfb27c30b58d282632044357db63761d
 
 WORKDIR /nethermind
+
+# Cap GC region range to 32 GiB to prevent init failure (CLR_E_GC_OOM 0x8013200E)
+# when the runtime over-estimates available memory. Override with -e if needed.
+ENV DOTNET_GCRegionRange=0x800000000
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
